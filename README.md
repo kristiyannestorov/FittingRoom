@@ -1,6 +1,6 @@
-# ProjectZed
+# FittingRoom
 
-ProjectZed is an online clothing store with a **3D fitting room**. Shoppers can see
+FittingRoom is an online clothing store with a **3D fitting room**. Shoppers can see
 every garment worn on a 3D avatar, combine pieces into an outfit, and even try clothes
 on a photo of themselves before buying. Store staff add a product by uploading a couple
 of flat-lay photos; the 3D version of the garment is generated automatically.
