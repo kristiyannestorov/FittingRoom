@@ -1,0 +1,580 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+}
+
+enum Currency {
+  EUR
+}
+
+enum ProductType {
+  DRESS
+  T_SHIRT
+  SHORTS
+  PANTS
+  LONG_SLEEVE
+  HOODIE
+}
+
+enum ProductCategory {
+  BODYCON
+  A_LINE
+  WRAP
+  MAXI
+  SLIP
+  BALL_GOWN
+  SHIFT
+  CREW_NECK
+  V_NECK
+  GRAPHIC
+  POLO
+  HENLEY
+  WAFFLE_KNIT
+  BUTTON_UP
+  PULLOVER
+  ZIP_UP
+  CHINO
+  DENIM
+  ATHLETIC
+}
+
+enum ClothingSize {
+  XS
+  S
+  M
+  L
+  XL
+  XXL
+}
+
+enum FulfillmentType {
+  STOCKED
+  MADE_TO_ORDER
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  IN_PRODUCTION
+  PACKED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+  PAYMENT_FAILED
+}
+
+enum PaymentProviderKey {
+  STRIPE
+  PAYPAL
+}
+
+enum PaymentEventKind {
+  PAYMENT_SUCCEEDED
+  PAYMENT_PENDING
+  PAYMENT_FAILED
+  REFUNDED
+  CHARGEBACK
+  IGNORED
+}
+
+enum ShippingProviderKey {
+  ECONT
+  SPEEDY
+}
+
+enum DeliveryMode {
+  ADDRESS
+  OFFICE
+}
+
+enum ShipmentStatus {
+  PENDING
+  LABEL_CREATED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  RETURNED
+  CANCELLED
+  EXCEPTION
+}
+
+enum ProductionTicketStatus {
+  QUEUED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Gender {
+  FEMALE
+  MALE
+}
+
+enum GenerationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum GarmentGenerationProviderKey {
+  MANUAL
+  TRIPO3D
+  LOCAL_MULTIVIEW
+  LOCAL_BAKE
+}
+
+enum ProductEventKind {
+  CARD_CLICK
+  PAGE_VIEW
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         UserRole @default(CUSTOMER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  carts         Cart[]
+  orders        Order[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  familyId  String    @db.Uuid
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  userAgent String?
+  ipAddress String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+model Product {
+  id               String          @id @default(uuid()) @db.Uuid
+  slug             String          @unique
+  name             String
+  description      String          @default("")
+  productType      ProductType
+  category         ProductCategory
+  gender           Gender
+  basePriceMinor   Int
+  currency         Currency        @default(EUR)
+  thumbnailKey     String?
+  imageKeys        String[]        @default([])
+  availableSizes   ClothingSize[]
+  fulfillmentType  FulfillmentType @default(STOCKED)
+  materials        String[]        @default([])
+  careInstructions String?
+  easeOverride     Json?
+  weightGrams      Int             @default(500)
+  isPublished      Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  variants   ProductVariant[]
+  inventory  InventoryItem[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+  garment3D  Garment3D?
+  events     ProductEvent[]
+
+  @@index([productType, isPublished])
+  @@index([category, isPublished])
+  @@index([gender, isPublished])
+  @@index([isPublished, createdAt])
+  @@map("products")
+}
+
+model ProductVariant {
+  id              String   @id @default(uuid()) @db.Uuid
+  productId       String   @db.Uuid
+  name            String
+  colorName       String
+  colorHex        String
+  patternName     String?
+  thumbnailKey    String?
+  priceDeltaMinor Int      @default(0)
+  isPublished     Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory  InventoryItem[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model ProductEvent {
+  id        String           @id @default(uuid()) @db.Uuid
+  productId String           @db.Uuid
+  kind      ProductEventKind
+  anonId    String
+  createdAt DateTime         @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, kind])
+  @@index([createdAt])
+  @@map("product_events")
+}
+
+model InventoryItem {
+  id                 String       @id @default(uuid()) @db.Uuid
+  sku                String       @unique
+  productId          String       @db.Uuid
+  variantId          String       @db.Uuid
+  size               ClothingSize
+  quantityAvailable  Int          @default(0)
+  quantityReserved   Int          @default(0)
+  reorderThreshold   Int          @default(3)
+  lowStockNotifiedAt DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  product   Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant      @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  movements InventoryMovement[]
+
+  @@unique([productId, variantId, size])
+  @@index([quantityAvailable])
+  @@map("inventory")
+}
+
+model InventoryMovement {
+  id              String   @id @default(uuid()) @db.Uuid
+  inventoryItemId String   @db.Uuid
+  delta           Int
+  reason          String
+  orderId         String?  @db.Uuid
+  actorUserId     String?  @db.Uuid
+  createdAt       DateTime @default(now())
+
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryItemId, createdAt])
+  @@map("inventory_movements")
+}
+
+model Cart {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  sessionId String?  @unique
+  currency  Currency @default(EUR)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@index([userId])
+  @@map("carts")
+}
+
+model CartItem {
+  id             String       @id @default(uuid()) @db.Uuid
+  cartId         String       @db.Uuid
+  productId      String       @db.Uuid
+  variantId      String       @db.Uuid
+  size           ClothingSize
+  quantity       Int          @default(1)
+  unitPriceMinor Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  cart    Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId, variantId, size])
+  @@index([cartId])
+  @@map("cart_items")
+}
+
+model Order {
+  id               String              @id @default(uuid()) @db.Uuid
+  orderNumber      String              @unique
+  userId           String              @db.Uuid
+  status           OrderStatus         @default(PENDING_PAYMENT)
+  currency         Currency            @default(EUR)
+  subtotalMinor    Int
+  discountMinor    Int                 @default(0)
+  discountCode     String?
+  shippingMinor    Int                 @default(0)
+  totalMinor       Int
+  paymentProvider  PaymentProviderKey
+  paymentRef       String?
+  idempotencyKey   String              @unique
+  shippingProvider ShippingProviderKey
+  deliveryMode     DeliveryMode
+  serviceCode      String
+  shippingAddress  Json
+  placedAt         DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  user          User               @relation(fields: [userId], references: [id])
+  items         OrderItem[]
+  statusEvents  OrderStatusEvent[]
+  paymentEvents PaymentEvent[]
+  shipment      Shipment?
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([paymentRef])
+  @@map("orders")
+}
+
+model Discount {
+  id           String       @id @default(uuid()) @db.Uuid
+  code         String       @unique
+  productType  ProductType?
+  percentOff   Int
+  isActive     Boolean      @default(true)
+  usedAt       DateTime?
+  usedByUserId String?      @db.Uuid
+  expiresAt    DateTime
+  createdAt    DateTime     @default(now())
+
+  @@index([code, isActive])
+  @@map("discounts")
+}
+
+model OrderItem {
+  id             String       @id @default(uuid()) @db.Uuid
+  orderId        String       @db.Uuid
+  productId      String       @db.Uuid
+  variantId      String       @db.Uuid
+  productName    String
+  productSlug    String
+  variantName    String?
+  size           ClothingSize
+  quantity       Int
+  unitPriceMinor Int
+  sku            String
+  thumbnailKey   String?
+  createdAt      DateTime     @default(now())
+
+  order            Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product          Product           @relation(fields: [productId], references: [id])
+  variant          ProductVariant    @relation(fields: [variantId], references: [id])
+  productionTicket ProductionTicket?
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model OrderStatusEvent {
+  id        String      @id @default(uuid()) @db.Uuid
+  orderId   String      @db.Uuid
+  status    OrderStatus
+  note      String?
+  source    String
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_status_events")
+}
+
+model PaymentEvent {
+  id              String             @id @default(uuid()) @db.Uuid
+  orderId         String?            @db.Uuid
+  provider        PaymentProviderKey
+  eventType       String
+  kind            PaymentEventKind
+  externalId      String
+  rawPayload      Json
+  receivedAt      DateTime           @default(now())
+  processedAt     DateTime?
+  processingError String?
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, externalId])
+  @@index([orderId])
+  @@index([processedAt])
+  @@map("payment_events")
+}
+
+model Shipment {
+  id                    String              @id @default(uuid()) @db.Uuid
+  orderId               String              @unique @db.Uuid
+  provider              ShippingProviderKey
+  externalId            String?
+  trackingNumber        String?
+  labelKey              String?
+  status                ShipmentStatus      @default(PENDING)
+  priceMinor            Int?
+  currency              Currency            @default(EUR)
+  weightGrams           Int?
+  estimatedDeliveryDate DateTime?
+  deliveredAt           DateTime?
+  nextPollAt            DateTime?
+  pollAttempts          Int                 @default(0)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  order  Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  events ShipmentEvent[]
+
+  @@index([trackingNumber])
+  @@index([status, nextPollAt])
+  @@map("shipments")
+}
+
+model ShipmentEvent {
+  id          String         @id @default(uuid()) @db.Uuid
+  shipmentId  String         @db.Uuid
+  status      ShipmentStatus
+  description String
+  location    String?
+  rawStatus   String?
+  occurredAt  DateTime
+  createdAt   DateTime       @default(now())
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@unique([shipmentId, rawStatus, occurredAt])
+  @@index([shipmentId, occurredAt])
+  @@map("shipment_events")
+}
+
+model CourierOffice {
+  id          String              @id @default(uuid()) @db.Uuid
+  provider    ShippingProviderKey
+  externalId  String
+  name        String
+  city        String
+  postCode    String?
+  address     String
+  latitude    Float?
+  longitude   Float?
+  isActive    Boolean             @default(true)
+  refreshedAt DateTime            @default(now())
+
+  @@unique([provider, externalId])
+  @@index([provider, city])
+  @@map("courier_offices")
+}
+
+model ProductionTicket {
+  id          String                 @id @default(uuid()) @db.Uuid
+  orderItemId String                 @unique @db.Uuid
+  status      ProductionTicketStatus @default(QUEUED)
+  notes       String?
+  assignedTo  String?                @db.Uuid
+  dueAt       DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@map("production_tickets")
+}
+
+model OutboundEmail {
+  id        String    @id @default(uuid()) @db.Uuid
+  toEmail   String
+  template  String
+  subject   String
+  payload   Json
+  sentAt    DateTime?
+  failedAt  DateTime?
+  error     String?
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([toEmail, createdAt])
+  @@index([sentAt])
+  @@map("outbound_emails")
+}
+
+model Garment3D {
+  id                 String                       @id @default(uuid()) @db.Uuid
+  productId          String                       @unique @db.Uuid
+  modelKey           String?
+  textureKey         String?
+  textureMeshSource  String?
+  textureMeshName    String?
+  previewKey         String?
+  sourceKeys         String[]                     @default([])
+  generationStatus   GenerationStatus             @default(PENDING)
+  generationProvider GarmentGenerationProviderKey @default(MANUAL)
+  generationVersion  Int                          @default(1)
+  publishOnComplete  Boolean                      @default(false)
+  confidenceScore    Float?
+  failureReason      String?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  measurements GarmentMeasurement[]
+  physics      GarmentPhysics?
+
+  @@map("garment_3d")
+}
+
+model GarmentMeasurement {
+  id             String       @id @default(uuid()) @db.Uuid
+  garmentId      String       @db.Uuid
+  size           ClothingSize
+  chestCm        Float?
+  waistCm        Float?
+  shoulderCm     Float?
+  lengthCm       Float?
+  sleeveLengthCm Float?
+
+  garment Garment3D @relation(fields: [garmentId], references: [id], onDelete: Cascade)
+
+  @@unique([garmentId, size])
+  @@map("garment_measurements")
+}
+
+model GarmentPhysics {
+  garmentId String @id @db.Uuid
+  stiffness Float  @default(0.5)
+  stretch   Float  @default(0.3)
+  bending   Float  @default(0.4)
+  friction  Float  @default(0.4)
+  thickness Float  @default(0.002)
+  density   Float  @default(150)
+  damping   Float  @default(0.1)
+
+  garment Garment3D @relation(fields: [garmentId], references: [id], onDelete: Cascade)
+
+  @@map("garment_physics")
+}

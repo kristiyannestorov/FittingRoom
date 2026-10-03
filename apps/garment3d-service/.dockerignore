@@ -1,0 +1,11 @@
+.venv
+__pycache__
+.cutout-cache
+*.png
+Dockerfile
+.dockerignore
+
+k2diag
+k2check
+*.npy
+*.jpg

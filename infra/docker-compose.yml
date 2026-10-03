@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zed-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zed
+      POSTGRES_PASSWORD: zed
+      POSTGRES_DB: zed
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zed"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: zed-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./.data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2024-01-16T16-07-38Z
+    container_name: zed-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: zedminio
+      MINIO_ROOT_PASSWORD: zedminio123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./.data/minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-01-13T08-44-48Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+      mc alias set local http://minio:9000 zedminio zedminio123 &&
+      mc mb -p local/zed-assets || true &&
+      mc anonymous set download local/zed-assets/public
+      "
+
+  db-init:
+    image: node:20-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql://zed:zed@postgres:5432/zed?schema=public
+      NODE_ENV: development
+    volumes:
+      - ..:/app
+    command: sh -c "npm install && npm run db:seed -w @zed/api"
+    profiles:
+      - init
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: zed-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  garment3d-service:
+    build:
+      context: ../apps/garment3d-service
+      dockerfile: Dockerfile
+    container_name: zed-garment3d
+    environment:
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8100:8100"
+    volumes:
+      - garment3d-rembg-models:/root/.rembg/models
+      - garment3d-huggingface-cache:/root/.cache/huggingface
+      - ../apps/garment3d-service/garments:/app/garments
+    mem_limit: 8g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  garment3d-rembg-models:
+  garment3d-huggingface-cache:

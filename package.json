@@ -1,0 +1,31 @@
+{
+  "name": "projectzed",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Apparel storefront",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "npm run build -w @zed/contracts && npm run build -w @zed/api && npm run build -w @zed/web",
+    "dev": "npm-run-all --parallel dev:contracts dev:api dev:worker dev:web",
+    "dev:contracts": "npm run dev -w @zed/contracts",
+    "dev:api": "npm run dev -w @zed/api",
+    "dev:worker": "npm run dev:worker -w @zed/api",
+    "dev:web": "npm run dev -w @zed/web",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "db:migrate": "npm run db:migrate -w @zed/api",
+    "db:seed": "npm run db:seed -w @zed/api",
+    "test": "npm run test -w @zed/api",
+    "lint": "npm run lint -w @zed/api && npm run lint -w @zed/web"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.6.3"
+  }
+}
